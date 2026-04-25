@@ -1,0 +1,79 @@
+name: CI [PR Validation]
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+    branches: [main]
+
+permissions:
+  content: read
+  pull_requests: write
+  checks: write
+
+jobs:
+  lint:
+    name: Lint and format
+    runs-on: ubuntu-latest
+    if: github.event.pull_request.draft == false
+    steps:
+       -uses: actions/checkout@v4
+
+       -uses: actions/setup-node@v4
+        with:
+         node-version: 20
+        
+        -name: install deps
+         run: npm ci
+
+        -name: lint check
+         run: npm run lint
+         continue-on-error: true
+        
+        -name: Prettier check
+         run: npm run format:check
+        
+        -name: Typescript check
+         run: npm run type-check
+  
+
+  test:
+   name: tests
+   runs-on: ubuntu-latest
+   if: github.event.pull_request.draft == false
+   strategy:
+    fail-fast: false
+   steps:
+    -uses: actions/checkout@v4
+
+    -uses: actions/setup-node@v4
+     with:
+       node-version: 20
+    
+    -name: install deps
+         run: npm ci
+
+    -name: unit tests
+     run: npm run test:unit
+
+    -name: integration tests
+     run: npm run test: integration
+  
+
+  build:
+   name: build-check
+   needs: [lint, test]
+   runs-on: ubuntu-latest
+   if: github.event.pull_request.draft == false
+   steps:
+    -uses: actions/checkout@v4
+
+    -uses: actions/setup-node@v4
+     with:
+       node-version: 20
+    
+    -name: install deps
+     run: npm ci
+
+    -name: build app
+     run: npm run build
+        

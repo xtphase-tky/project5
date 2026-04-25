@@ -1,0 +1,72 @@
+name: deploy to development
+
+on:
+ push:
+  branches:
+   -dev
+
+workflow_dispatch:
+ inputs:
+  force_rebuild:
+   description: 'Force docker rebuild or not'
+   required: false
+   default: false
+   type: boolean
+
+env:
+ EC2_USER: ${{ vars.EC2_USER }}
+ EC2_HOST: ${{ secrets.DEV_EC2_HOST }}
+ DEPLOY_PATH: /opt/app
+
+jobs:
+ build-push:
+  name: build and push image
+  runs-on: ubuntu-latest
+  outputs:
+   image_uri: ${{ steps.push.outputs.image_uri }}
+  steps:
+   -uses: actions/checkout@v4
+
+   -name: login to ECR
+    id: ecr-login
+    uses: aws-actions/amazon-ecr-login@v2
+    
+   -name: setup docker buildx
+    uses: docker/setup-buildx-action@v3
+
+   -name: build and push image
+    uses: docker/build-push-action@v5
+
+   -name: export image uri
+    run: |
+     echo "image_uri=${{ steps.ecr-login.outputs.registry }}" \
+     >> "$GITHUB_OUTPUT"
+     
+
+ deploy:
+  name: deploy to dev EC2
+  runs-on: ubuntu-latest
+  needs: build-push
+  environment:
+   name: dev
+  steps:
+   -uses: actions/checkout@v4
+
+   -name: DEPLOY OVER SSH
+    env:
+     IMAGE_URI: $ {{ needs.build-push.outputs.image_uri }}
+     DB_URL: $ {{ secrets.DEV_DATABASE_URL }}
+
+    run: |
+     echo "${{ secrets.DEV_EC2_SSH_KEY }}" > /tmp/key && chmod 600 /tmp/key
+     scp -i /tmp/key docker/docker-compose.yml ${{ env.EC2_USER }}@${{env.EC2_HOST}}:${{ env.DEPLOY_PATH }}/docker-compose.yml
+     ssh -i /tmp/key -o StrictHostKeyChecking=no ${{ env.EC2_USER }}@${{env.EC2_HOST}} << 'ENDSSH'
+      set -euo pipefail
+
+ smoke:
+  name: smoke test health
+  needs: deploy
+  runs-on: ubuntu-latest
+  steps:
+   -name: smoke test
+    run: curl -f http://${{ env.EC2_HOST }}/health
