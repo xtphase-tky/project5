@@ -2,7 +2,7 @@
 
 ## Overview
 
-This project enforces a strict validation check on every PR and builds, pushes to registry and deploys docker image to Development server.
+This project enforces a strict validation check on every PR and builds, pushes docker image to registry and deploys it to Development server.
 
 It enforces principles such as :
 1. Initiation on all types of PR
