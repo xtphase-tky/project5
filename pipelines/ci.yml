@@ -6,8 +6,8 @@ on:
     branches: [main]
 
 permissions:
-  content: read
-  pull_requests: write
+  contents: read
+  pull-requests: write
   checks: write
 
 jobs:
@@ -16,64 +16,58 @@ jobs:
     runs-on: ubuntu-latest
     if: github.event.pull_request.draft == false
     steps:
-       -uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-       -uses: actions/setup-node@v4
+      - uses: actions/setup-node@v4
         with:
-         node-version: 20
-        
-        -name: install deps
-         run: npm ci
+          node-version: 20
 
-        -name: lint check
-         run: npm run lint
-         continue-on-error: true
-        
-        -name: Prettier check
-         run: npm run format:check
-        
-        -name: Typescript check
-         run: npm run type-check
-  
+      - name: install deps
+        run: npm ci
+
+      - name: lint check
+        run: npm run lint
+
+      - name: Prettier check
+        run: npm run format:check
+
+      - name: Typescript check
+        run: npm run type-check
 
   test:
-   name: tests
-   runs-on: ubuntu-latest
-   if: github.event.pull_request.draft == false
-   strategy:
-    fail-fast: false
-   steps:
-    -uses: actions/checkout@v4
+    name: tests
+    runs-on: ubuntu-latest
+    if: github.event.pull_request.draft == false
+    steps:
+      - uses: actions/checkout@v4
 
-    -uses: actions/setup-node@v4
-     with:
-       node-version: 20
-    
-    -name: install deps
-         run: npm ci
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
 
-    -name: unit tests
-     run: npm run test:unit
+      - name: install deps
+        run: npm ci
 
-    -name: integration tests
-     run: npm run test: integration
-  
+      - name: unit tests
+        run: npm run test:unit
+
+      - name: integration tests
+        run: npm run test:integration
 
   build:
-   name: build-check
-   needs: [lint, test]
-   runs-on: ubuntu-latest
-   if: github.event.pull_request.draft == false
-   steps:
-    -uses: actions/checkout@v4
+    name: build-check
+    needs: [lint, test]
+    runs-on: ubuntu-latest
+    if: github.event.pull_request.draft == false
+    steps:
+      - uses: actions/checkout@v4
 
-    -uses: actions/setup-node@v4
-     with:
-       node-version: 20
-    
-    -name: install deps
-     run: npm ci
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
 
-    -name: build app
-     run: npm run build
-        
+      - name: install deps
+        run: npm ci
+
+      - name: build app
+        run: npm run build
