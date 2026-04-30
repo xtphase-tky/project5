@@ -5,13 +5,13 @@ on:
   branches:
    -dev
 
-workflow_dispatch:
- inputs:
-  force_rebuild:
-   description: 'Force docker rebuild or not'
-   required: false
-   default: false
-   type: boolean
+ workflow_dispatch:
+  inputs:
+   force_rebuild:
+    description: 'Force docker rebuild or not'
+    required: false
+    default: false
+    type: boolean
 
 env:
  EC2_USER: ${{ vars.EC2_USER }}
@@ -25,22 +25,35 @@ jobs:
   outputs:
    image_uri: ${{ steps.push.outputs.image_uri }}
   steps:
-   -uses: actions/checkout@v4
+   - uses: actions/checkout@v4
 
-   -name: login to ECR
-    id: ecr-login
-    uses: aws-actions/amazon-ecr-login@v2
+   - name: configure AWS Creds
+     uses: aws-actions/configure-aws-credentials@v4
+     with:
+      aws-region: ${{ vars.AWS_REGION }}
+      role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+
+   - name: login to ECR
+     id: ecr-login
+     uses: aws-actions/amazon-ecr-login@v2
     
-   -name: setup docker buildx
-    uses: docker/setup-buildx-action@v3
+   - name: setup docker buildx
+     uses: docker/setup-buildx-action@v3
 
-   -name: build and push image
-    uses: docker/build-push-action@v5
+   - name: build and push image
+     uses: docker/build-push-action@v5
+     with:
+      context: .
+      push: true
+      tags: ${{ steps.ecr-login.outputs.registry }}/your-repo:${{ github.sha }}
+      no-cache: ${{ inputs.force_rebuild }}
+      cache-from: type=gha
+      cache-to: type=gha, mode=max
 
-   -name: export image uri
-    run: |
-     echo "image_uri=${{ steps.ecr-login.outputs.registry }}" \
-     >> "$GITHUB_OUTPUT"
+   - name: export image uri
+     run: |
+      echo "image_uri=${{ steps.ecr-login.outputs.registry }}/your-repo:${{ github.sha }}" \
+      >> "$GITHUB_OUTPUT"
      
 
  deploy:
@@ -50,23 +63,36 @@ jobs:
   environment:
    name: dev
   steps:
-   -uses: actions/checkout@v4
+   - uses: actions/checkout@v4
 
-   -name: DEPLOY OVER SSH
-    env:
-     IMAGE_URI: $ {{ needs.build-push.outputs.image_uri }}
-     DB_URL: $ {{ secrets.DEV_DATABASE_URL }}
+   - uses: webfactory/ssh-agent@v0.9.0
+     with:
+      ssh-private-key: ${{ secrets.DEV_EC2_SSH_KEY }}
 
-    run: |
-     echo "${{ secrets.DEV_EC2_SSH_KEY }}" > /tmp/key && chmod 600 /tmp/key
-     scp -i /tmp/key docker/docker-compose.yml ${{ env.EC2_USER }}@${{env.EC2_HOST}}:${{ env.DEPLOY_PATH }}/docker-compose.yml
-     ssh -i /tmp/key -o StrictHostKeyChecking=no ${{ env.EC2_USER }}@${{env.EC2_HOST}} << 'ENDSSH'
+   - name: DEPLOY OVER SSH
+     env:
+      IMAGE_URI: ${{ needs.build-push.outputs.image_uri }}
+      DB_URL: ${{ secrets.DEV_DATABASE_URL }}
+
+     run: |
+      echo "${{ secrets.DEV_EC2_SSH_KEY }}" > /tmp/key && chmod 600 /tmp/key
+      scp docker/docker-compose.yml ${{ env.EC2_USER }}@${{ env.EC2_HOST }}:${{ env.DEPLOY_PATH }}/docker-compose.yml
+      ssh -o StrictHostKeyChecking=no ${{ env.EC2_USER }}@${{ env.EC2_HOST }} << 'ENDSSH'
       set -euo pipefail
+      cd /opt/app
+      echo "IMAGE_URI=$IMAGE_URI" > .env
+      echo "DB_URL=$DB_URL" >> .env
+      docker compose pull
+      docker compose up -d --remove-orphans
+      docker image prune -f
+ENDSSH
 
  smoke:
   name: smoke test health
   needs: deploy
   runs-on: ubuntu-latest
   steps:
-   -name: smoke test
-    run: curl -f http://${{ env.EC2_HOST }}/health
+   - name: smoke test
+     run: |
+      curl -f --retry 5 --retry-delay 5 --retry-connrefused \
+      https://${{ vars.DEV_APP_URL }}/health
